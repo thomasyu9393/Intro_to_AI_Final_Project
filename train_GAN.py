@@ -110,7 +110,7 @@ def save_images(epoch, image1, image2):
         axs[i, 1].imshow(image2[i][0][0], cmap='gray')
         axs[i, 1].axis('off')
     
-    fig.savefig(f"seepa/GAN0_{epoch}.png")
+    fig.savefig(f"../seepa/GAN0_{epoch}.png")
     plt.close()
 
 # Main
@@ -128,7 +128,7 @@ if __name__ == '__main__':
 
     batch_size = 32
 
-    data = load_data.load_images_in_tensor(dataset_dir='Traditional_Chinese_Data')
+    data = load_data.load_images_in_tensor(dataset_dir='../Traditional_Chinese_Data')
     train_data, test_data = load_data.split_dataset(data, train_size=0.2)
     train_batches = load_data.create_batches(train_data, batch_size=32)
     print('Start!!!!!')
@@ -169,30 +169,24 @@ if __name__ == '__main__':
 
             optimizer_D.step()
             d_loss_data = d_loss.data
+            generator.train()
+            discriminator.eval()
 
-            if epoch and epoch % 10 == 0:
-                generator.train()
-                discriminator.eval()
+            optimizer_G.zero_grad()
 
-                optimizer_G.zero_grad()
+            # Building z2
+            z2 = Variable(torch.randn(batch_size, noise_dim)).to(device)
+            g_image = generator(z2, get_latent(autoencoder.encoder, images).to(device))
+            g_validity = discriminator(g_image)
+            wtf = g_validity.detach().cpu()
 
-                # Building z2
-                z2 = Variable(torch.randn(batch_size, noise_dim)).to(device)
-                g_image = generator(z2, get_latent(autoencoder.encoder, images).to(device))
-                g_validity = discriminator(g_image)
-                wtf = g_validity.detach().cpu()
+            g_loss = criterion(g_validity, Variable(torch.ones(batch_size)).to(device))
 
-                g_loss = criterion(g_validity, Variable(torch.ones(batch_size)).to(device))
-
-                g_loss.backward()
-                optimizer_G.step()
-                g_loss_data = g_loss.data
-
-        if epoch==0 or epoch % 10:
-            print(f"Epoch [{epoch + 1}/{num_epochs}] | D Loss: {d_loss_data}")
-        else:
-            print(f"Epoch [{epoch + 1}/{num_epochs}] | D Loss: {d_loss_data} | G Loss: {g_loss_data}")
-            print(wtf)
+            g_loss.backward()
+            optimizer_G.step()
+            g_loss_data = g_loss.data
+        print(f"Epoch [{epoch + 1}/{num_epochs}] | D Loss: {d_loss_data} | G Loss: {g_loss_data}")
+        # print(wtf)
 
         # Set generator eval
         generator.eval()
@@ -201,8 +195,8 @@ if __name__ == '__main__':
         z = Variable(torch.randn(5, noise_dim)).to(device)
         res_data = jizz(data[:5]).to(device)
         gen_data = generator(z, get_latent(autoencoder.encoder, res_data).to(device)).detach()
-        print(res_data.shape)
-        print(gen_data.shape)
+        # print(res_data.shape)
+        # print(gen_data.shape)
         gen_data = gen_data.unsqueeze(1).data.cpu()
         res_data = res_data.unsqueeze(1).data.cpu()
 

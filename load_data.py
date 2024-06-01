@@ -11,7 +11,7 @@ def image_transform(image, path=0):
         transforms.Grayscale(),
         transforms.Resize((50, 50)),
         transforms.ToTensor(),
-        transforms.Normalize(mean = (0.5,), std = (0.5,))
+        transforms.Normalize(mean = [0.5], std = [0.5])
     ])
     if path:
         image = Image.open(image)
