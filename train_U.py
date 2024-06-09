@@ -35,29 +35,28 @@ class UNetUp(nn.Module):
         x = torch.cat((x, skip_input), dim=1)
         return x
 
-class GeneratorUNet(nn.Module):
+class GeneratorUNetFC(nn.Module):
     def __init__(self, img_channels=1, z_dim=100):
-        super(GeneratorUNet, self).__init__()
+        super(GeneratorUNetFC, self).__init__()
 
-        self.down1 = UNetDown(img_channels, 64, normalize=False)
-        self.down2 = UNetDown(64, 128)
-        self.down3 = UNetDown(128, 256)
-        self.down4 = UNetDown(256, 512)
-        self.down5 = UNetDown(512, 512)
-        self.down6 = UNetDown(512, 512)
-        self.down7 = UNetDown(512, 512)
+        self.down1 = UNetDown(img_channels, 64, normalize=False)  # (1, 64, 32, 32)
+        self.down2 = UNetDown(64, 128)                           # (1, 128, 16, 16)
+        self.down3 = UNetDown(128, 128)                          # (1, 128, 8, 8)
+        self.down4 = UNetDown(128, 128)                          # (1, 128, 4, 4)
+        self.down5 = UNetDown(128, 128)                          # (1, 128, 2, 2)
+        self.down6 = UNetDown(128, 128)                          # (1, 128, 1, 1)
 
-        self.bottleneck = nn.Sequential(
-            nn.Conv2d(512 + z_dim, 512, kernel_size=4, stride=1, padding=0),
-            nn.ReLU(inplace=True)
+        self.fc = nn.Linear(128 * 1 * 1 + z_dim, 128 * 1 * 1)
+        self.fc_reshape = nn.Sequential(
+            nn.BatchNorm1d(128 * 1 * 1),
+            nn.ReLU(True),
         )
 
-        self.up1 = UNetUp(512, 512)
-        self.up2 = UNetUp(1024, 512)
-        self.up3 = UNetUp(1024, 512)
-        self.up4 = UNetUp(1024, 256)
-        self.up5 = UNetUp(512, 128)
-        self.up6 = UNetUp(256, 64)
+        self.up1 = UNetUp(128, 128)
+        self.up2 = UNetUp(256, 128)
+        self.up3 = UNetUp(256, 128)
+        self.up4 = UNetUp(256, 128)
+        self.up5 = UNetUp(256, 64)
         self.up7 = nn.Sequential(
             nn.ConvTranspose2d(128, img_channels, kernel_size=4, stride=2, padding=1),
             nn.Tanh()
@@ -65,30 +64,39 @@ class GeneratorUNet(nn.Module):
 
     def forward(self, img, z):
         # Encoder
-        d1 = self.down1(img)
-        d2 = self.down2(d1)
-        d3 = self.down3(d2)
-        d4 = self.down4(d3)
-        d5 = self.down5(d4)
-        d6 = self.down6(d5)
-        d7 = self.down7(d6)
+        d1 = self.down1(img)  # (1, 64, 32, 32)
+        d2 = self.down2(d1)   # (1, 128, 16, 16)
+        d3 = self.down3(d2)   # (1, 128, 8, 8)
+        d4 = self.down4(d3)   # (1, 128, 4, 4)
+        d5 = self.down5(d4)   # (1, 128, 2, 2)
+        d6 = self.down6(d5)   # (1, 128, 1, 1)
 
-        # Add z to bottleneck
-        z = z.view(z.size(0), z.size(1), 1, 1)
-        z = z.expand(z.size(0), z.size(1), d7.size(2), d7.size(3))
-        bottleneck_input = torch.cat((d7, z), dim=1)
-        bottleneck_output = self.bottleneck(bottleneck_input)
+        # Flatten and combine with z
+        d6_flat = d6.view(d6.size(0), -1)  # (1, 128 * 1 * 1) = (1, 128)
+        z = z.view(z.size(0), -1)          # (1, z_dim)
+        fc_input = torch.cat((d6_flat, z), dim=1)  # (1, 128 + z_dim) = (1, 228)
+
+        # Fully connected bottleneck
+        fc_output = self.fc(fc_input)  # (1, 128 * 1 * 1) = (1, 128)
+        fc_output = self.fc_reshape(fc_output)  # (1, 128)
+        fc_output = fc_output.view(fc_output.size(0), 128, 1, 1)  # (1, 128, 1, 1)
+        #print('fc_output', fc_output.shape)
 
         # Decoder
-        u1 = self.up1(bottleneck_output, d7)
-        u2 = self.up2(u1, d6)
-        u3 = self.up3(u2, d5)
-        u4 = self.up4(u3, d4)
-        u5 = self.up5(u4, d3)
-        u6 = self.up6(u5, d2)
-        u7 = self.up7(u6)
+        u1 = self.up1(fc_output, d5)  # (1, 256, 2, 2)
+        #print('u1', u1.shape)
+        u2 = self.up2(u1, d4)         # (1, 128 + 128 = 256, 4, 4)
+        #print('u2', u2.shape)
+        u3 = self.up3(u2, d3)         # (1, 128 + 128 = 256, 8, 8)
+        #print('u3', u3.shape)
+        u4 = self.up4(u3, d2)         # (1, 128 + 128 = 256, 16, 16)
+        #print('u4', u4.shape)
+        u5 = self.up5(u4, d1)         # (1, 64 + 64 = 128, 32, 32)
+        #print('u5', u5.shape)
+        u6 = self.up7(u5)             # (1, 1, 64, 64)
+        #print('u6', u6.shape)
 
-        return u7
+        return u6
 
 class Discriminator(nn.Module):
     def __init__(self, img_channels=1):
@@ -115,8 +123,10 @@ class Discriminator(nn.Module):
 
 
 if __name__ == '__main__':
+    print(device)
+
     # Define the directory containing the images
-    data_dir = 'LXGWWenKaiTC-Regular'
+    data_dir = 'data/ChineseChar/temp'
 
     # Define the image transformations
     transform = transforms.Compose([
@@ -135,17 +145,19 @@ if __name__ == '__main__':
     # Initialize the generator and discriminator
     img_channels = 1
     z_dim = 100
-    generator = GeneratorUNet(img_channels, z_dim).to(device)
+    generator = GeneratorUNetFC(img_channels, z_dim).to(device)
     discriminator = Discriminator(img_channels).to(device)
 
     # Define the loss function and optimizers
     criterion = nn.BCELoss().to(device)
     lr = 0.0002
-    optimizer_G = optim.Adam(generator.parameters(), lr=lr, betas=(0.5, 0.999)).to(device)
-    optimizer_D = optim.Adam(discriminator.parameters(), lr=lr, betas=(0.5, 0.999)).to(device)
+    optimizer_G = torch.optim.Adam(generator.parameters(), lr=lr, betas=(0.5, 0.999))
+    optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=lr, betas=(0.5, 0.999))
+
+    print('Start!!!')
 
     # Training loop
-    num_epochs = 100
+    num_epochs = 1
     for epoch in range(num_epochs):
         for i, (imgs, _) in enumerate(dataloader):
             batch_size = imgs.size(0)
