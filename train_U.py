@@ -134,7 +134,7 @@ if __name__ == '__main__':
     dataset = FontDataset(root_dir=root_dir, font_dirs=font_dirs, transform=transform)
 
     # Create a DataLoader
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=False)
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
 
     # Initialize the generator and discriminator
     img_channels = 1
@@ -143,7 +143,10 @@ if __name__ == '__main__':
     discriminator = Discriminator(img_channels).to(device)
 
     # Define the loss function and optimizers
-    criterion = nn.BCELoss().to(device)
+    BCE_Loss = nn.BCELoss().to(device)
+    L1_Loss = nn.L1Loss().to(device)
+    LAMBDA = 100
+
     lr = 0.0002
     optimizer_G = torch.optim.Adam(generator.parameters(), lr=lr, betas=(0.5, 0.999))
     optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=lr, betas=(0.5, 0.999))
@@ -173,13 +176,13 @@ if __name__ == '__main__':
 
             # Real images
             outputs_real = discriminator(real_imgs)
-            d_loss_real = criterion(outputs_real, real)
+            d_loss_real = BCE_Loss(outputs_real, real)
 
             # Fake images
             z = torch.randn(batch_size, z_dim).to(device)  # Random noise
             fake_imgs = generator(base_imgs, z)
             outputs_fake = discriminator(fake_imgs.detach())
-            d_loss_fake = criterion(outputs_fake, fake)
+            d_loss_fake = BCE_Loss(outputs_fake, fake)
 
             # Total discriminator loss
             d_loss = d_loss_real + d_loss_fake
@@ -193,21 +196,24 @@ if __name__ == '__main__':
 
             # Generate fake images and calculate loss
             outputs_fake = discriminator(fake_imgs)
-            g_loss = criterion(outputs_fake, real)
+            
+            gan_loss = BCE_Loss(outputs_fake, real)
+            l1_loss = L1_Loss(fake_imgs, real_imgs)
+            total_gen_loss = gan_loss + (LAMBDA * l1_loss)
 
-            g_loss.backward()
+            total_gen_loss.backward()
             optimizer_G.step()
 
         # Print the progress
-        print(f"[Epoch {epoch+1}/{num_epochs}] [D loss: {d_loss.item()}] [G loss: {g_loss.item()}]")
+        print(f"[Epoch {epoch+1}/{num_epochs}] [D loss: {d_loss.item()}] [G loss: {total_gen_loss.item()}]")
 
         base_imgs_show = base_imgs.cpu()
         fake_imgs_show = fake_imgs.data.cpu()
         real_imgs_show = real_imgs.data.cpu()
-        ShowImages(base_imgs[:5], fake_imgs_show[:5], real_imgs_show[:5], name=epoch)
+        ShowImages(base_imgs_show[:5], fake_imgs_show[:5], real_imgs_show[:5], name=None)
 
 
-        losses.append((d_loss.item(), g_loss.item()))
+        losses.append((d_loss.item(), total_gen_loss.item()))
         temp_losses = list(zip(*losses))
         plt.figure()
         plt.plot(range(0, epoch + 1), temp_losses[0], label='Discriminator Loss')
@@ -216,6 +222,6 @@ if __name__ == '__main__':
         plt.ylabel('Loss')
         plt.title('Training Loss Over Epochs')
         plt.legend()
-        plt.savefig('6-10-16_33_train_U/training_loss.png')
+        #plt.savefig('6-10-16_33_train_U/training_loss.png')
         plt.close()
 
