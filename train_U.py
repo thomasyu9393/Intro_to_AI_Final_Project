@@ -37,9 +37,9 @@ class UNetUp(nn.Module):
         x = torch.cat((x, skip_input), dim=1)
         return x
 
-class GeneratorUNetFC(nn.Module):
+class GeneratorUNet(nn.Module):
     def __init__(self, img_channels=1, z_dim=100):
-        super(GeneratorUNetFC, self).__init__()
+        super(GeneratorUNet, self).__init__()
 
         self.down1 = UNetDown(img_channels, 64, normalize=False)  # (1, 64, 32, 32)
         self.down2 = UNetDown(64, 128)                            # (1, 128, 16, 16)
@@ -139,7 +139,7 @@ if __name__ == '__main__':
     # Initialize the generator and discriminator
     img_channels = 1
     z_dim = 100
-    generator = GeneratorUNetFC(img_channels, z_dim).to(device)
+    generator = GeneratorUNet(img_channels, z_dim).to(device)
     discriminator = Discriminator(img_channels).to(device)
 
     # Define the loss function and optimizers
@@ -156,7 +156,7 @@ if __name__ == '__main__':
     losses = []
 
     # Training loop
-    num_epochs = 100
+    num_epochs = 2000
     for epoch in range(num_epochs):
         for i, (input_img, target_img) in enumerate(dataloader):
             batch_size = input_img.size(0)
@@ -225,3 +225,5 @@ if __name__ == '__main__':
         #plt.savefig('6-10-16_33_train_U/training_loss.png')
         plt.close()
 
+        if epoch % 400 == 0:
+            torch.save(generator.state_dict(), f'UNet_{epoch}.pth')
