@@ -125,7 +125,7 @@ if __name__ == '__main__':
     ])
 
     # Define the directory containing the images
-    root_dir = 'data/ChineseChar/'
+    root_dir = 'data/font/'
     font_dirs = ['LXGWWenKaiTC-Regular', 'HanWangShinSu-Medium']
     dataset = FontDataset(root_dir=root_dir, font_dirs=font_dirs, transform=transform)
 
