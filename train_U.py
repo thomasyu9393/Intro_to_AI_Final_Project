@@ -4,6 +4,8 @@ import torch.nn as nn
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
+from dataset import FontDataset
+from utils import ShowImages
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class UNetDown(nn.Module):
@@ -40,11 +42,11 @@ class GeneratorUNetFC(nn.Module):
         super(GeneratorUNetFC, self).__init__()
 
         self.down1 = UNetDown(img_channels, 64, normalize=False)  # (1, 64, 32, 32)
-        self.down2 = UNetDown(64, 128)                           # (1, 128, 16, 16)
-        self.down3 = UNetDown(128, 128)                          # (1, 128, 8, 8)
-        self.down4 = UNetDown(128, 128)                          # (1, 128, 4, 4)
-        self.down5 = UNetDown(128, 128)                          # (1, 128, 2, 2)
-        self.down6 = UNetDown(128, 128)                          # (1, 128, 1, 1)
+        self.down2 = UNetDown(64, 128)                            # (1, 128, 16, 16)
+        self.down3 = UNetDown(128, 128)                           # (1, 128, 8, 8)
+        self.down4 = UNetDown(128, 128)                           # (1, 128, 4, 4)
+        self.down5 = UNetDown(128, 128)                           # (1, 128, 2, 2)
+        self.down6 = UNetDown(128, 128)                           # (1, 128, 1, 1)
 
         self.fc = nn.Linear(128 * 1 * 1 + z_dim, 128 * 1 * 1)
         self.fc_reshape = nn.Sequential(
@@ -72,29 +74,22 @@ class GeneratorUNetFC(nn.Module):
         d6 = self.down6(d5)   # (1, 128, 1, 1)
 
         # Flatten and combine with z
-        d6_flat = d6.view(d6.size(0), -1)  # (1, 128 * 1 * 1) = (1, 128)
-        z = z.view(z.size(0), -1)          # (1, z_dim)
+        d6_flat = d6.view(d6.size(0), -1)          # (1, 128 * 1 * 1) = (1, 128)
+        z = z.view(z.size(0), -1)                  # (1, z_dim)
         fc_input = torch.cat((d6_flat, z), dim=1)  # (1, 128 + z_dim) = (1, 228)
 
         # Fully connected bottleneck
-        fc_output = self.fc(fc_input)  # (1, 128 * 1 * 1) = (1, 128)
-        fc_output = self.fc_reshape(fc_output)  # (1, 128)
+        fc_output = self.fc(fc_input)                             # (1, 128 * 1 * 1) = (1, 128)
+        fc_output = self.fc_reshape(fc_output)                    # (1, 128)
         fc_output = fc_output.view(fc_output.size(0), 128, 1, 1)  # (1, 128, 1, 1)
-        #print('fc_output', fc_output.shape)
 
         # Decoder
         u1 = self.up1(fc_output, d5)  # (1, 256, 2, 2)
-        #print('u1', u1.shape)
         u2 = self.up2(u1, d4)         # (1, 128 + 128 = 256, 4, 4)
-        #print('u2', u2.shape)
         u3 = self.up3(u2, d3)         # (1, 128 + 128 = 256, 8, 8)
-        #print('u3', u3.shape)
         u4 = self.up4(u3, d2)         # (1, 128 + 128 = 256, 16, 16)
-        #print('u4', u4.shape)
         u5 = self.up5(u4, d1)         # (1, 64 + 64 = 128, 32, 32)
-        #print('u5', u5.shape)
         u6 = self.up7(u5)             # (1, 1, 64, 64)
-        #print('u6', u6.shape)
 
         return u6
 
@@ -125,9 +120,6 @@ class Discriminator(nn.Module):
 if __name__ == '__main__':
     print(device)
 
-    # Define the directory containing the images
-    data_dir = 'data/ChineseChar/temp'
-
     # Define the image transformations
     transform = transforms.Compose([
         transforms.Grayscale(num_output_channels=1),  # Ensure the images are grayscale
@@ -136,11 +128,13 @@ if __name__ == '__main__':
         transforms.Normalize([0.5], [0.5])  # Normalize the images
     ])
 
-    # Load the dataset
-    dataset = datasets.ImageFolder(root=data_dir, transform=transform)
+    # Define the directory containing the images
+    root_dir = 'data/ChineseChar/'
+    font_dirs = ['LXGWWenKaiTC-Regular', 'HanWangShinSu-Medium']
+    dataset = FontDataset(root_dir=root_dir, font_dirs=font_dirs, transform=transform)
 
     # Create a DataLoader
-    dataloader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=2)
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
 
     # Initialize the generator and discriminator
     img_channels = 1
@@ -156,16 +150,19 @@ if __name__ == '__main__':
 
     print('Start!!!')
 
+    losses = []
+
     # Training loop
-    num_epochs = 1
+    num_epochs = 100
     for epoch in range(num_epochs):
-        for i, (imgs, _) in enumerate(dataloader):
-            batch_size = imgs.size(0)
+        for i, (input_img, target_img) in enumerate(dataloader):
+            batch_size = input_img.size(0)
             real = torch.ones(batch_size, 1)
             fake = torch.zeros(batch_size, 1)
             
             # Configure input
-            real_imgs = imgs.to(device)  # Move images to GPU
+            base_imgs = input_img.to(device)
+            real_imgs = target_img.to(device)
             real = real.to(device)
             fake = fake.to(device)
 
@@ -180,7 +177,7 @@ if __name__ == '__main__':
 
             # Fake images
             z = torch.randn(batch_size, z_dim).to(device)  # Random noise
-            fake_imgs = generator(real_imgs, z)
+            fake_imgs = generator(base_imgs, z)
             outputs_fake = discriminator(fake_imgs.detach())
             d_loss_fake = criterion(outputs_fake, fake)
 
@@ -201,5 +198,23 @@ if __name__ == '__main__':
             g_loss.backward()
             optimizer_G.step()
 
-            # Print the progress
-            print(f"[Epoch {epoch}/{num_epochs}] [Batch {i}/{len(dataloader)}] [D loss: {d_loss.item()}] [G loss: {g_loss.item()}]")
+        # Print the progress
+        print(f"[Epoch {epoch+1}/{num_epochs}] [D loss: {d_loss.item()}] [G loss: {g_loss.item()}]")
+
+        fake_imgs_show = fake_imgs.data.cpu()
+        real_imgs_show = real_imgs.data.cpu()
+        ShowImages(fake_imgs_show[:5], real_imgs_show[:5], name=epoch)
+
+
+        losses.append((d_loss.item(), g_loss.item()))
+        temp_losses = list(zip(*losses))
+        plt.figure()
+        plt.plot(range(0, epoch + 1), temp_losses[0], label='Discriminator Loss')
+        plt.plot(range(0, epoch + 1), temp_losses[1], label='Generator Loss')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.title('Training Loss Over Epochs')
+        plt.legend()
+        plt.savefig('6-10-16_33_train_U/training_loss.png')
+        plt.close()
+
