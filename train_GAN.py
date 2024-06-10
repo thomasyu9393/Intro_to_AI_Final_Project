@@ -1,211 +1,217 @@
+import os
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
-from v3 import Encoder, Decoder, Autoencoder
-import load_data as load_data
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
+from dataset import FontDataset
+from utils import ShowImages
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-class Discriminator(nn.Module):
-    def __init__(self):
-        super(Discriminator, self).__init__()
-
-        self.main = nn.Sequential(
-            # input is (1) x 50 x 50
-            nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1),
+    
+class Encoder(nn.Module):
+    def __init__(self, img_channels):
+        super(Encoder, self).__init__()
+        self.model = nn.Sequential(
+            nn.Conv2d(img_channels, 64, kernel_size=4, stride=2, padding=1),  # (64, 32, 32)
             nn.BatchNorm2d(64),
-            nn.LeakyReLU(0.2),
-            # state size. (64) x 25 x 25
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),  # (128, 16, 16)
             nn.BatchNorm2d(128),
-            nn.LeakyReLU(0.2),
-            # state size. (128) x 13 x 13
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),  # (256, 8, 8)
             nn.BatchNorm2d(256),
-            nn.LeakyReLU(0.2),
-            # state size. (256) x 7 x 7
-            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),  # (512, 4, 4)
             nn.BatchNorm2d(512),
-            nn.LeakyReLU(0.2),
-            # state size. (512) x 4 x 4
-            nn.Conv2d(512, 1, kernel_size=4, stride=1, padding=0),
-            # state size. (1) x 1 x 1
-            nn.Sigmoid()
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=4, stride=2, padding=1),  # (512, 2, 2)
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=4, stride=2, padding=1),  # (512, 1, 1)
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
         )
 
-    def forward(self, input):
-        x = self.main(input)
-        x = x.view(-1)
-        return x
+    def forward(self, x):
+        return self.model(x)
 
-"""
-class Generator(nn.Module):
-    def __init__(self, z_dim):
-
-        super(Generator, self).__init__()
-
-        self.main = nn.Sequential(
-            # input is Z, going into a convolution
-            nn.ConvTranspose2d( z_dim, 512, 4, 1, 0, bias=False),
+class Decoder(nn.Module):
+    def __init__(self, img_channels):
+        super(Decoder, self).__init__()
+        self.model = nn.Sequential(
+            nn.ConvTranspose2d(512, 512, kernel_size=4, stride=2, padding=1),  # (512, 2, 2)
             nn.BatchNorm2d(512),
-            nn.ReLU(True),
-            # state size. (512) x 4 x 4
-            nn.ConvTranspose2d(512, 256, 4, 2, 1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(512, 512, kernel_size=4, stride=2, padding=1),  # (512, 4, 4)
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),  # (256, 8, 8)
             nn.BatchNorm2d(256),
-            nn.ReLU(True),
-            # state size. (256) x 8 x 8
-            nn.ConvTranspose2d( 256, 128, 4, 1, 0, bias=False),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),  # (128, 16, 16)
             nn.BatchNorm2d(128),
-            nn.ReLU(True),
-            # state size. (64) x 11 x 11
-            nn.ConvTranspose2d( 128, 64, 4, 2, 0, 1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),  # (64, 32, 32)
             nn.BatchNorm2d(64),
-            nn.ReLU(True),
-            # state size. (32) x 25 x 25
-            nn.ConvTranspose2d(64, 1, 4, 2, 1, bias=False),   
-            # state size. (64) x 50 x 50    
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(64, img_channels, kernel_size=4, stride=2, padding=1),  # (img_channels, 64, 64)
             nn.Tanh()
         )
 
-    def forward(self, input):
-        return self.main(input)
-"""
-class Generator(nn.Module):
-    def __init__(self, noise_dim, latent_dim):
-        super(Generator, self).__init__()
-        self.fc = nn.Sequential(
-            nn.Linear(noise_dim + latent_dim, 256),
-            nn.ReLU(),
-            nn.Linear(256, 512),
-            nn.ReLU(),
-            nn.Linear(512, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 50 * 50),  # Output size for 50x50 grayscale image
+    def forward(self, x):
+        return self.model(x)
+    
+class GeneratorED(nn.Module):
+    def __init__(self, img_channels=1, z_dim=100):
+        super(GeneratorED, self).__init__()
+        self.encoder = Encoder(img_channels)
+        self.fc1 = nn.Linear(512 + z_dim, 512 * 1 * 1)
+        self.fc2 = nn.Sequential(
+            nn.BatchNorm1d(512 * 1 * 1),
+            nn.ReLU(True),
+        )
+        self.decoder = Decoder(img_channels)
+
+    def forward(self, img, z):
+        # Encoder
+        enc_output = self.encoder(img)  # (N, 512, 1, 1)
+        enc_output = enc_output.view(enc_output.size(0), -1)  # Flatten: (N, 512)
+        
+        # Concatenate with random noise vector z
+        z = z.view(z.size(0), -1)  # (N, z_dim)
+        combined = torch.cat((enc_output, z), dim=1)  # (N, 512 + z_dim)
+        
+        # Fully connected layers
+        fc_output = self.fc1(combined)  # (N, 512 * 1 * 1)
+        fc_output = self.fc2(fc_output)  # (N, 512 * 1 * 1)
+        fc_output = fc_output.view(fc_output.size(0), 512, 1, 1)  # Reshape: (N, 512, 1, 1)
+        
+        # Decoder
+        dec_output = self.decoder(fc_output)  # (N, img_channels, 64, 64)
+        
+        return dec_output
+
+class Discriminator(nn.Module):
+    def __init__(self, img_channels=1):
+        super(Discriminator, self).__init__()
+        self.model = nn.Sequential(
+            nn.Conv2d(img_channels, 64, kernel_size=4, stride=2, padding=1),  # 32x32
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),  # 16x16
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),  # 8x8
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),  # 4x4
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(512, 1, kernel_size=4, stride=1, padding=0),  # 1x1
             nn.Sigmoid()
         )
 
-    def forward(self, noise, latent_vector):
-        x = torch.cat((noise, latent_vector), dim=1)
-        x = self.fc(x)
-        x = x.view(-1, 1, 50, 50)  # Reshape the output to image dimensions
-        return x
+    def forward(self, img):
+        return self.model(img).view(img.size(0), -1)
 
-
-# Initialize models
-latent_dim = 128
-noise_dim = 100
-generator = Generator(latent_dim, noise_dim).to(device)
-discriminator = Discriminator().to(device)
-criterion = nn.MSELoss().to(device)
-
-# Optimizers
-optimizer_G = torch.optim.Adam(generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
-optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=0.0002, betas=(0.5, 0.999))
-
-def save_images(epoch, image1, image2):
-    fig, axs = plt.subplots(5, 2)
-    for i in range(5):
-        axs[i, 0].imshow(image1[i][0][0], cmap='gray')
-        axs[i, 0].axis('off')
-        axs[i, 1].imshow(image2[i][0][0], cmap='gray')
-        axs[i, 1].axis('off')
-    
-    fig.savefig(f"seepa/GAN0_{epoch}.png")
-    plt.close()
-
-# Main
 if __name__ == '__main__':
-    print(device, 'train_GAN.py')
+    print(device)
 
-    autoencoder = Autoencoder(latent_dim=128)
-    autoencoder.load_state_dict(torch.load('autoencoder_v3.pth'))
-    autoencoder.eval()
+    # Define the image transformations
+    transform = transforms.Compose([
+        transforms.Grayscale(num_output_channels=1),  # Ensure the images are grayscale
+    #    transforms.Resize((64, 64)),  # Resize the images to 64x64
+        transforms.ToTensor(),  # Convert the images to tensors
+        transforms.Normalize([0.5], [0.5])  # Normalize the images
+    ])
 
-    def get_latent(encoder, images):
-        with torch.no_grad():
-            latents = encoder(images)
-        return latents
+    # Define the directory containing the images
+    root_dir = 'data/ChineseChar/'
+    font_dirs = ['LXGWWenKaiTC-Regular', 'HanWangShinSu-Medium']
+    dataset = FontDataset(root_dir=root_dir, font_dirs=font_dirs, transform=transform)
 
-    batch_size = 32
+    # Create a DataLoader
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=False)
 
-    data = load_data.load_images_in_tensor(dataset_dir='Traditional_Chinese_Data')
-    train_data, test_data = load_data.split_dataset(data, train_size=0.2)
-    train_batches = load_data.create_batches(train_data, batch_size=32)
-    print('Start!!!!!')
+    # Initialize the generator and discriminator
+    img_channels = 1
+    z_dim = 100
+    generator = GeneratorED(img_channels, z_dim).to(device)
+    discriminator = Discriminator(img_channels).to(device)
 
-    def jizz(li):
-        a = []
-        for (i, j) in li:
-            a.append(i)
-        return torch.stack(a)
+    # Define the loss function and optimizers
+    criterion = nn.BCELoss().to(device)
+    lr = 0.0002
+    optimizer_G = torch.optim.Adam(generator.parameters(), lr=lr, betas=(0.5, 0.999))
+    optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=lr, betas=(0.5, 0.999))
 
+    print('Start!!!')
+
+    losses = []
+
+    # Training loop
     num_epochs = 100
     for epoch in range(num_epochs):
-        wtf = None
-        for batch in train_batches:
-            images = []
-            for (image, label) in batch:
-                images.append(image)
-            images = torch.stack(images).to(device)
+        for i, (input_img, target_img) in enumerate(dataloader):
+            batch_size = input_img.size(0)
+            real = torch.ones(batch_size, 1)
+            fake = torch.zeros(batch_size, 1)
+            
+            # Configure input
+            base_imgs = input_img.to(device)
+            real_imgs = target_img.to(device)
+            real = real.to(device)
+            fake = fake.to(device)
 
-            generator.eval()
-            discriminator.train()
-
-            # Init gradient
+            # ---------------------
+            #  Train Discriminator
+            # ---------------------
             optimizer_D.zero_grad()
-            # print(len(images))
-            real_validity = discriminator(images).to(device)
-            # print(real_validity)
-            real_loss = criterion(real_validity, Variable(torch.ones(batch_size)).to(device))
 
-            # Building z
-            z = Variable(torch.randn(batch_size, noise_dim)).to(device)
-            fake_images = generator(z, get_latent(autoencoder.encoder, images).to(device))
-            fake_validity = discriminator(fake_images).to(device)
-            fake_loss = criterion(fake_validity, Variable(torch.zeros(batch_size)).to(device))
+            # Real images
+            outputs_real = discriminator(real_imgs)
+            d_loss_real = criterion(outputs_real, real)
 
-            d_loss = real_loss + fake_loss
+            # Fake images
+            z = torch.randn(batch_size, z_dim).to(device)  # Random noise
+            fake_imgs = generator(base_imgs, z)
+            outputs_fake = discriminator(fake_imgs.detach())
+            d_loss_fake = criterion(outputs_fake, fake)
+
+            # Total discriminator loss
+            d_loss = d_loss_real + d_loss_fake
             d_loss.backward()
-
             optimizer_D.step()
-            d_loss_data = d_loss.data
 
-            if epoch and epoch % 10 == 0:
-                generator.train()
-                discriminator.eval()
+            # -----------------
+            #  Train Generator
+            # -----------------
+            optimizer_G.zero_grad()
 
-                optimizer_G.zero_grad()
+            # Generate fake images and calculate loss
+            outputs_fake = discriminator(fake_imgs)
+            g_loss = criterion(outputs_fake, real)
 
-                # Building z2
-                z2 = Variable(torch.randn(batch_size, noise_dim)).to(device)
-                g_image = generator(z2, get_latent(autoencoder.encoder, images).to(device))
-                g_validity = discriminator(g_image)
-                wtf = g_validity.detach().cpu()
+            g_loss.backward()
+            optimizer_G.step()
 
-                g_loss = criterion(g_validity, Variable(torch.ones(batch_size)).to(device))
+        # Print the progress
+        print(f"[Epoch {epoch+1}/{num_epochs}] [D loss: {d_loss.item()}] [G loss: {g_loss.item()}]")
 
-                g_loss.backward()
-                optimizer_G.step()
-                g_loss_data = g_loss.data
+        base_imgs_show = base_imgs.cpu()
+        fake_imgs_show = fake_imgs.data.cpu()
+        real_imgs_show = real_imgs.data.cpu()
+        ShowImages(base_imgs[:5], fake_imgs_show[:5], real_imgs_show[:5], name=None)
 
-        if epoch==0 or epoch % 10:
-            print(f"Epoch [{epoch + 1}/{num_epochs}] | D Loss: {d_loss_data}")
-        else:
-            print(f"Epoch [{epoch + 1}/{num_epochs}] | D Loss: {d_loss_data} | G Loss: {g_loss_data}")
-            print(wtf)
 
-        # Set generator eval
-        generator.eval()
-        
-        # Building z 
-        z = Variable(torch.randn(5, noise_dim)).to(device)
-        res_data = jizz(data[:5]).to(device)
-        gen_data = generator(z, get_latent(autoencoder.encoder, res_data).to(device)).detach()
-        print(res_data.shape)
-        print(gen_data.shape)
-        gen_data = gen_data.unsqueeze(1).data.cpu()
-        res_data = res_data.unsqueeze(1).data.cpu()
+        losses.append((d_loss.item(), g_loss.item()))
+        temp_losses = list(zip(*losses))
+        plt.figure()
+        plt.plot(range(0, epoch + 1), temp_losses[0], label='Discriminator Loss')
+        plt.plot(range(0, epoch + 1), temp_losses[1], label='Generator Loss')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.title('Training Loss Over Epochs')
+        plt.legend()
+        #plt.savefig('6-10-16_33_train_U/training_loss.png')
+        plt.close()
 
-        save_images(epoch, res_data, gen_data)
-
-        
