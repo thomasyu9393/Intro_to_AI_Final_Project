@@ -134,7 +134,7 @@ if __name__ == '__main__':
     dataset = FontDataset(root_dir=root_dir, font_dirs=font_dirs, transform=transform)
 
     # Create a DataLoader
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=False)
 
     # Initialize the generator and discriminator
     img_channels = 1
@@ -201,9 +201,10 @@ if __name__ == '__main__':
         # Print the progress
         print(f"[Epoch {epoch+1}/{num_epochs}] [D loss: {d_loss.item()}] [G loss: {g_loss.item()}]")
 
+        base_imgs_show = base_imgs.cpu()
         fake_imgs_show = fake_imgs.data.cpu()
         real_imgs_show = real_imgs.data.cpu()
-        ShowImages(fake_imgs_show[:5], real_imgs_show[:5], name=epoch)
+        ShowImages(base_imgs[:5], fake_imgs_show[:5], real_imgs_show[:5], name=epoch)
 
 
         losses.append((d_loss.item(), g_loss.item()))
