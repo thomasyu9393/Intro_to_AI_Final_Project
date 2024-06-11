@@ -220,10 +220,10 @@ if __name__ == '__main__':
         plt.plot(range(0, epoch + 1), temp_losses[1], label='Generator Loss')
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
-        plt.title('Training Loss Over Epochs')
+        plt.title('Training Loss Over Epochs (UNet)')
         plt.legend()
-        #plt.savefig('6-10-16_33_train_U/training_loss.png')
+        # plt.savefig('training_loss.png')
         plt.close()
 
-        if epoch % 400 == 0:
+        if epoch % 200 == 0:
             torch.save(generator.state_dict(), f'UNet_{epoch}.pth')
