@@ -11,7 +11,7 @@ except IOError:
     exit()
 
 # Create a directory to save the images
-output_dir = "font/{font_name}"
+output_dir = ""
 os.makedirs(output_dir, exist_ok=True)
 
 # Open and read the words from words.txt
@@ -22,8 +22,9 @@ with open("words.txt", "r") as file:
 image_width = 64
 image_height = 64
 for i, word in enumerate(words):
-    if (i >= 2000):
-        break
+    if (i < 2000):
+        continue
+
     word = word.strip()  # Remove any leading/trailing whitespace
 
     # Create a new image in grayscale mode ("L") with a white background
@@ -31,7 +32,7 @@ for i, word in enumerate(words):
     draw = ImageDraw.Draw(image)
 
     # Draw the word on the image in black
-    draw.text((6, 0), word, font=font, fill=0)
+    draw.text((6, 5), word, font=font, fill=0)  # (horizontal, vertical)
 
     # Save the image
     image_path = os.path.join(output_dir, f"word{i + 1}.png")
