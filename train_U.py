@@ -156,7 +156,7 @@ if __name__ == '__main__':
     losses = []
 
     # Training loop
-    num_epochs = 2000
+    num_epochs = 1000
     for epoch in range(num_epochs):
         for i, (input_img, target_img) in enumerate(dataloader):
             batch_size = input_img.size(0)

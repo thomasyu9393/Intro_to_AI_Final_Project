@@ -39,9 +39,6 @@ class Decoder(nn.Module):
     def __init__(self, img_channels):
         super(Decoder, self).__init__()
         self.model = nn.Sequential(
-            nn.ConvTranspose2d(512, 512, kernel_size=4, stride=2, padding=1),  # (512, 2, 2)
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
             nn.ConvTranspose2d(512, 512, kernel_size=4, stride=2, padding=1),  # (512, 4, 4)
             nn.BatchNorm2d(512),
             nn.ReLU(inplace=True),
@@ -65,9 +62,9 @@ class GeneratorED(nn.Module):
     def __init__(self, img_channels=1, z_dim=100):
         super(GeneratorED, self).__init__()
         self.encoder = Encoder(img_channels)
-        self.fc1 = nn.Linear(512 + z_dim, 512 * 1 * 1)
+        self.fc1 = nn.Linear(512 + z_dim, 512 * 2 * 2)
         self.fc2 = nn.Sequential(
-            nn.BatchNorm1d(512 * 1 * 1),
+            nn.BatchNorm1d(512 * 2 * 2),
             nn.ReLU(True),
         )
         self.decoder = Decoder(img_channels)
@@ -82,9 +79,9 @@ class GeneratorED(nn.Module):
         combined = torch.cat((enc_output, z), dim=1)  # (N, 512 + z_dim)
         
         # Fully connected layers
-        fc_output = self.fc1(combined)  # (N, 512 * 1 * 1)
-        fc_output = self.fc2(fc_output)  # (N, 512 * 1 * 1)
-        fc_output = fc_output.view(fc_output.size(0), 512, 1, 1)  # Reshape: (N, 512, 1, 1)
+        fc_output = self.fc1(combined)  # (N, 512 * 2 * 2)
+        fc_output = self.fc2(fc_output)  # (N, 512 * 2 * 2)
+        fc_output = fc_output.view(fc_output.size(0), 512, 2, 2)  # Reshape: (N, 512, 2, 2)
         
         # Decoder
         dec_output = self.decoder(fc_output)  # (N, img_channels, 64, 64)
@@ -152,7 +149,7 @@ if __name__ == '__main__':
     losses = []
 
     # Training loop
-    num_epochs = 100
+    num_epochs = 1000
     for epoch in range(num_epochs):
         for i, (input_img, target_img) in enumerate(dataloader):
             batch_size = input_img.size(0)
