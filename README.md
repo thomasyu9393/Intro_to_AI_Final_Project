@@ -1,5 +1,5 @@
 # Chinese Font Style Transfer
-Course: Introduction to Artificial Intelligence, 2024 Spring
+Course: Introduction to Artificial Intelligence, 2024 Spring  
 Group Members: Thomas Yu, Sean Lin, Howgin
 
 Applying pix2pix, a conditional GAN with generator either VAE or U-Net structures, to perform Chinese character styles transfer. Collecting dataset (training/testing) from existing `.ttf` in `data`.
@@ -7,6 +7,7 @@ Applying pix2pix, a conditional GAN with generator either VAE or U-Net structure
 ## Demo
 - A simple demo:
 ![](demo/1.png)
+
 - On testing dataset:
 ![](demo/2.png)
 
