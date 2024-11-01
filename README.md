@@ -6,10 +6,10 @@ Applying pix2pix, a conditional GAN with generator either VAE or U-Net structure
 
 ## Demo
 A simple demo:  
-<img src="demo/1.png" height="150">
+<img src="demo/1.png" height="350">
 
 On testing dataset:  
-<img src="demo/2.png" height="150">
+<img src="demo/2.png" height="350">
 
 ## Reference
 - P. Isola, J.-Y. Zhu, T. Zhou, and A. A. Efros. [Image-to-Image Translation with Conditional Adversarial Network](https://arxiv.org/abs/1611.07004). CVPR 2017.
